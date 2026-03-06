@@ -7,7 +7,7 @@ const tar = require('tar');
 
 const app = express();
 const PORT = 3000;
-const FLAG = process.env.FLAG || 'FLAG{example_flag_here}';
+const FLAG = process.env.FLAG || 'FLAG{**redected**}';
 
 const ROOT_DIR = __dirname;
 const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
@@ -124,4 +124,5 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
+
 
