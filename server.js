@@ -8,13 +8,11 @@ const tar = require('tar');
 const app = express();
 const PORT = 3000;
 
-// 디렉토리 설정
 const ROOT_DIR = __dirname;
 const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const ISADMIN_PATH = path.join(ROOT_DIR, 'isadmin.txt');
 
-// 기본 디렉토리/파일 준비
 for (const dir of [UPLOAD_DIR, PUBLIC_DIR]) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -24,10 +22,8 @@ if (!fs.existsSync(ISADMIN_PATH)) {
   fs.writeFileSync(ISADMIN_PATH, 'false', 'utf8');
 }
 
-// 정적 파일 서빙 (이미지 확인용)
 app.use('/images', express.static(PUBLIC_DIR));
 
-// 업로드 설정: tar 파일 1개
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, UPLOAD_DIR);
@@ -39,7 +35,6 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    // 간단히 .tar만 허용 (MIME까지 제대로 보려면 추가 검사 필요)
     if (file.originalname.endsWith('.tar')) {
       cb(null, true);
     } else {
@@ -48,7 +43,6 @@ const upload = multer({
   }
 }).single('file');
 
-// /upload: tar 업로드 & 해제 (안전 버전)
 app.post('/upload', (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -105,7 +99,6 @@ app.post('/upload', (req, res) => {
   });
 });
 
-// /flag: isadmin.txt가 true면 플래그 반환 (예시용)
 app.get('/flag', async (req, res) => {
   try {
     const content = await fsp.readFile(ISADMIN_PATH, 'utf8');
@@ -122,7 +115,6 @@ app.get('/flag', async (req, res) => {
   }
 });
 
-// 상태 확인용 엔드포인트 (선택)
 app.get('/', (req, res) => {
   res.send('Node-tar image upload service (safe version).');
 });
@@ -130,4 +122,5 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
+
 
