@@ -7,6 +7,7 @@ const tar = require('tar');
 
 const app = express();
 const PORT = 3000;
+const FLAG = process.env.FLAG || 'FLAG{example_flag_here}';
 
 const ROOT_DIR = __dirname;
 const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
@@ -35,6 +36,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
+    // 간단히 .tar만 허용 (MIME까지 제대로 보려면 추가 검사 필요)
     if (file.originalname.endsWith('.tar')) {
       cb(null, true);
     } else {
@@ -108,7 +110,7 @@ app.get('/flag', async (req, res) => {
       return res.status(403).send('You are not admin.');
     }
 
-    res.send('FLAG{example_flag_here}');
+    res.send(FLAG);
   } catch (e) {
     console.error(e);
     res.status(500).send('Error reading isadmin');
@@ -122,5 +124,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
-
 
