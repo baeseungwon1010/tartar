@@ -7,7 +7,7 @@ const tar = require('tar');
 
 const app = express();
 const PORT = 3000;
-const FLAG = process.env.FLAG || 'FLAG{**redected**}';
+const FLAG = process.env.FLAG || 'FLAG{example_flag_here}';
 
 const ROOT_DIR = __dirname;
 const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
@@ -30,20 +30,27 @@ const storage = multer.diskStorage({
     cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
-    cb(null, 'upload-' + Date.now() + '.tar');
+    const ext = path.extname(file.originalname) || '';
+    cb(null, 'upload-' + Date.now() + ext);
   }
 });
 const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    // 간단히 .tar만 허용 (MIME까지 제대로 보려면 추가 검사 필요)
-    if (file.originalname.endsWith('.tar')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only .tar files are allowed'));
-    }
-  }
+  storage
 }).single('file');
+
+app.get('/upload', (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <h1>Upload jpg or tar</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+          <input type="file" name="file" />
+          <button type="submit">Upload</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
 
 app.post('/upload', (req, res) => {
   upload(req, res, async (err) => {
@@ -56,48 +63,75 @@ app.post('/upload', (req, res) => {
       return res.status(400).send('No file uploaded');
     }
 
-    const tarPath = req.file.path;
+    const originalName = req.file.originalname.toLowerCase();
+    const ext = path.extname(originalName);
+
+    if (ext === '.jpg' || ext === '.jpeg') {
+      const targetPath = path.join(PUBLIC_DIR, path.basename(originalName));
+
+      try {
+        // 경로 탈출 방지
+        const resolved = path.resolve(PUBLIC_DIR, path.basename(originalName));
+        if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
+          return res.status(400).send('Invalid file name');
+        }
+
+        await fsp.copyFile(req.file.path, targetPath);
+        await fsp.unlink(req.file.path).catch(() => {});
+
+        return res.send('Single JPG uploaded.');
+      } catch (e) {
+        console.error(e);
+        return res.status(500).send('Error saving jpg');
+      }
+    }
+
+    if (ext === '.tar') {
+      const tarPath = req.file.path;
+
+      try {
+        await tar.list({
+          file: tarPath,
+          onentry: (entry) => {
+            console.log('Entry:', entry.path, entry.type);
+          }
+        });
+
+        await tar.x({
+          file: tarPath,
+          cwd: PUBLIC_DIR,
+          filter: (p, stat) => {
+
+            if (!p.toLowerCase().endsWith('.jpg')) {
+              console.log('Skip non-jpg:', p);
+              return false;
+            }
+
+            const resolved = path.resolve(PUBLIC_DIR, p);
+
+            if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
+              console.log('Path traversal detected, skip:', p, '->', resolved);
+              return false;
+            }
+
+            return true;
+          }
+        });
+
+        await fsp.unlink(tarPath).catch(() => {});
+
+        return res.send('Tar uploaded and extracted (safe mode).');
+      } catch (e) {
+        console.error(e);
+        return res.status(500).send('Extraction error');
+      }
+    }
 
     try {
-      await tar.list({
-        file: tarPath,
-        onentry: (entry) => {
-          console.log('Entry:', entry.path, entry.type);
-        }
-      });
+      await fsp.unlink(req.file.path).catch(() => {});
+    } catch {}
 
-      await tar.x({
-        file: tarPath,
-        cwd: PUBLIC_DIR,
-        filter: (p, stat) => {
-          if (stat.type !== 'File') {
-            console.log('Skip non-regular entry:', p, stat.type);
-            return false;
-          }
-
-          if (!p.toLowerCase().endsWith('.jpg')) {
-            console.log('Skip non-jpg:', p);
-            return false;
-          }
-
-          const resolved = path.resolve(PUBLIC_DIR, p);
-
-          if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
-            console.log('Path traversal detected, skip:', p, '->', resolved);
-            return false;
-          }
-
-          return true;
-        }
-      });
-
-      await fsp.unlink(tarPath).catch(() => {});
-
-      res.send('Upload and extract completed (safe mode).');
-    } catch (e) {
-      console.error(e);
-      res.status(500).send('Extraction error');
-    }
+    return res.status(400).send('Only jpg or tar files are allowed');
   });
 });
 
@@ -124,5 +158,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
-
 
