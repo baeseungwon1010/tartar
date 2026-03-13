@@ -39,7 +39,7 @@ const upload = multer({
 }).single('file');
 
 app.get('/', (req, res) => {
-  res.send('you can upload your img\ndo not upload other file');
+  res.send('you can upload your img<br>do not upload other file');
 });
 
 app.get('/public/:filename', async (req, res) => {
@@ -149,7 +149,7 @@ if (ext === '.tar') {
 
     await fsp.unlink(tarPath).catch(() => {});
 
-    return res.send('Tar uploaded and extracted (safe mode).');
+    return res.send('Tar uploaded and extracted.');
   } catch (e) {
     console.error(e);
     return res.status(500).send('Extraction error');
