@@ -7,7 +7,7 @@ const tar = require('tar');
 
 const app = express();
 const PORT = 3000;
-const FLAG = process.env.FLAG || 'FLAG{example_flag_here}';
+const FLAG = process.env.FLAG || 'FLAG{fake_flag}';
 
 const ROOT_DIR = __dirname;
 const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
@@ -38,6 +38,29 @@ const upload = multer({
   storage
 }).single('file');
 
+app.get('/', (req, res) => {
+  res.send('you can upload your img\ndo not upload other file');
+});
+
+app.get('/public/:filename', async (req, res) => {
+  const filePath = path.join(PUBLIC_DIR, req.params.filename);
+  try {
+    const ext = path.extname(req.params.filename).toLowerCase();
+
+    if (ext === '.jpg') {
+      const content = await fsp.readFile(filePath);
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.send(content);
+    } else {
+      const content = await fsp.readFile(filePath, 'utf8');
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(content);
+    }
+  } catch (e) {
+    res.status(404).send('File not found');
+  }
+});
+
 app.get('/upload', (req, res) => {
   res.send(`
     <html>
@@ -66,11 +89,10 @@ app.post('/upload', (req, res) => {
     const originalName = req.file.originalname.toLowerCase();
     const ext = path.extname(originalName);
 
-    if (ext === '.jpg' || ext === '.jpeg') {
+    if (ext === '.jpg') {
       const targetPath = path.join(PUBLIC_DIR, path.basename(originalName));
 
       try {
-        // 경로 탈출 방지
         const resolved = path.resolve(PUBLIC_DIR, path.basename(originalName));
         if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
           return res.status(400).send('Invalid file name');
@@ -86,47 +108,53 @@ app.post('/upload', (req, res) => {
       }
     }
 
-    if (ext === '.tar') {
-      const tarPath = req.file.path;
+if (ext === '.tar') {
+  const tarPath = req.file.path;
 
-      try {
-        await tar.list({
-          file: tarPath,
-          onentry: (entry) => {
-            console.log('Entry:', entry.path, entry.type);
-          }
+  try {
+    await tar.list({
+      file: tarPath,
+      onentry: (entry) => {
+        console.log('Entry:', entry.path, entry.type);
+      }
+    });
+
+    const extractedPaths = [];
+
+    await tar.x({
+      file: tarPath,
+      cwd: PUBLIC_DIR,
+      onentry: (entry) => {
+        const resolved = path.resolve(PUBLIC_DIR, entry.path);
+
+        if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
+          console.log('Path traversal detected, skip:', entry.path, '->', resolved);
+          entry.resume();
+          return;
+        }
+
+        extractedPaths.push({
+          resolved,
+          isJpg: entry.path.toLowerCase().endsWith('.jpg')
         });
+      }
+    });
 
-        await tar.x({
-          file: tarPath,
-          cwd: PUBLIC_DIR,
-          filter: (p, stat) => {
-
-            if (!p.toLowerCase().endsWith('.jpg')) {
-              console.log('Skip non-jpg:', p);
-              return false;
-            }
-
-            const resolved = path.resolve(PUBLIC_DIR, p);
-
-            if (!resolved.startsWith(PUBLIC_DIR + path.sep)) {
-              console.log('Path traversal detected, skip:', p, '->', resolved);
-              return false;
-            }
-
-            return true;
-          }
-        });
-
-        await fsp.unlink(tarPath).catch(() => {});
-
-        return res.send('Tar uploaded and extracted (safe mode).');
-      } catch (e) {
-        console.error(e);
-        return res.status(500).send('Extraction error');
+    for (const { resolved, isJpg } of extractedPaths) {
+      if (!isJpg) {
+        console.log('Overwriting non-jpg with nope:', resolved);
+        await fsp.writeFile(resolved, 'nope');
       }
     }
 
+    await fsp.unlink(tarPath).catch(() => {});
+
+    return res.send('Tar uploaded and extracted (safe mode).');
+  } catch (e) {
+    console.error(e);
+    return res.status(500).send('Extraction error');
+  }
+}
     try {
       await fsp.unlink(req.file.path).catch(() => {});
     } catch {}
@@ -138,7 +166,7 @@ app.post('/upload', (req, res) => {
 app.get('/flag', async (req, res) => {
   try {
     const content = await fsp.readFile(ISADMIN_PATH, 'utf8');
-    const isAdmin = content.trim().toLowerCase() === 'true';
+    const isAdmin = content.trim().toLowerCase() !== 'false';
 
     if (!isAdmin) {
       return res.status(403).send('You are not admin.');
@@ -151,11 +179,20 @@ app.get('/flag', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('Node-tar image upload service (safe version).');
+app.get('/dir', async (req, res) => {
+  try {
+    const entries = await fsp.readdir(ROOT_DIR, { withFileTypes: true });
+    const list = entries.map(e => ({
+      name: e.name,
+      path: path.join(ROOT_DIR, e.name),
+      type: e.isDirectory() ? 'dir' : 'file',
+    }));
+    res.json(list);
+  } catch (e) {
+    res.status(500).send('Failed to read directory');
+  }
 });
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
-
