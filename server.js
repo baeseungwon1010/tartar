@@ -182,12 +182,12 @@ app.get('/flag', async (req, res) => {
 app.get('/dir', async (req, res) => {
   try {
     const entries = await fsp.readdir(ROOT_DIR, { withFileTypes: true });
-    const list = entries.map(e => ({
-      name: e.name,
-      path: path.join(ROOT_DIR, e.name),
-      type: e.isDirectory() ? 'dir' : 'file',
-    }));
-    res.json(list);
+    const lines = entries.map(e => {
+      const type = e.isDirectory() ? 'dir' : 'file';
+      return `${type.padEnd(10)}${e.name}`;
+    });
+    const result = ['type      name', '-'.repeat(30), ...lines].join('\n');
+    res.type('text/plain').send(result);
   } catch (e) {
     res.status(500).send('Failed to read directory');
   }
@@ -196,3 +196,4 @@ app.get('/dir', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
+
